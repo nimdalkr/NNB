@@ -3,3 +3,12 @@
 [Bb]in/
 [Oo]bj/
 .vs
+
+# Local game assets, replay corpus, build outputs, and machine-specific paths.
+/build/
+/logs/
+/artifacts/
+/data/
+/local.json
+__pycache__/
+*.pyc

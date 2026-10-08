@@ -1,0 +1,52 @@
+# NNB — NewNimdalBot
+
+Locutus-based successor to Nimdal. Fork: https://github.com/nimdalkr/NNB
+
+The upstream reference is `bmnielsen/Locutus@4e96da0b7e31831ee97aaef153b2bef977a235e1`.
+Upstream gameplay sources and `Locutus.json` are unchanged. The original README and licenses remain in place.
+The first milestone is a reproducible baseline plus replay evidence retrieval; this is **not yet a working Remastered game integration or an improved playing policy**.
+
+## Build and verify
+
+Requires Windows, Visual Studio 2022 C++ Build Tools, SDK 10.0.26100.0, CMake, Python 3.11+.
+
+```powershell
+$stage = .\scripts\build-baseline.ps1
+cmake -S tools/native-check -B build/native-check -A Win32
+cmake --build build/native-check --config Release
+.\build\native-check\Release\nnb-native-smoke.exe (Join-Path $stage NNB.dll)
+python -m unittest discover -s tools -p test_*.py -v
+```
+
+The DLL is written to `artifacts/baseline-<timestamp>/NNB.dll`; build artifacts are not distributed.
+The smoke check tests loading, exports, factory creation and destruction. It deliberately does not call `onStart` or run a game. Retargeting the old solution to v143 requires no strategy-source edits. Compiler warnings remain, including a reference-to-temporary warning in upstream `SquadData.cpp`; a successful build is not gameplay validation.
+
+## Import the existing expert collection
+
+```powershell
+python tools/corpus.py import --source-root <existing-StardustRemastered-directory>
+python tools/corpus.py find --map-hash 12917b98ef6ee4f4755d036b5f6f631b368519a6 --matchup pvz --opening NineGateExpand --frame 4000 --workers 18 --bases 2
+python tools/map_preflight.py --runtime artifacts/baseline-<timestamp>
+```
+
+All 1,645 collected replays are accepted as the user's **2500+ collection**. No rating revalidation, opponent-rating inference or MMR filter is applied. Technical issues remain visible in the inventory and do not erase games. Replay hashes establish identity; state-cache errors indicate whether extracted observations can support a change.
+
+Inputs are read-only. Indexes, replay paths, state data and machine paths stay under ignored `data/`. Neither raw replays nor map assets are published. Reimport after changing source files.
+
+Case retrieval requires the exact observed map hash, matchup and opening classification. Optional start coordinates require the same spawn. Situation matching compares the requested worker, army-resource, base, resource and observed enemy pressure values using explicit scales. It is a retrieval aid, not a policy, rating, intent detector or victory probability. The output provides the player's observed situation and following build observations, with replay identity for manual verification of movement and micro. Opponent hidden states are not used as player knowledge.
+
+The original replay-level analysis/holdout split is preserved for both PvP perspectives. Holdout games are never returned for policy design. Default cases require the existing independent first-eight-minute comparison; `--provisional` explicitly permits other technically clean state extracts. No match returns an empty list, not a substituted map or build. Opening counts have 48-frame sampling resolution and do not prove exact command order or intention. Movement through mineral gaps must be checked at unit/command resolution before becoming a micro rule.
+
+## Current map and integration limitation
+
+The locally collected pool contains Aiolos 1.0b, Attitude SE 2.1, Backrooms 1.1, Colorless Fate 1.1, KnockOut 1.4, Octagon SE 2.0, Odyssey:RE 2.0, Radeon 1.2 and Fighting Spirit 1.4. Each CHK is checked against its existing census SHA256; exact observed game hashes remain in the local map manifest. This matches the community [2026 Season 2 map listing](https://liquipedia.net/starcraft/Ladder/Maps); native ladder assets locally corroborate seven maps, and match evidence corroborates Aiolos, Radeon and Odyssey. The listing is not an official Blizzard announcement and should be refreshed when a new season is observed.
+
+Locutus's bundled BWTA removes online map analysis. `BWTA::analyze()` requires `bwapi-data/BWTA2/<mapHash>.bwta`, version 6; without it `onStart` stops. None of the nine current-map caches is present. `map_preflight.py` exits 2 for that blocker. Existing old VC120 BWTA binaries are not presumed compatible with the v143 build. Do not fabricate caches or rename another map's cache.
+
+Before gameplay: generate the exact map caches with the full analyzer, validate base/resource/choke/path geometry, then test native `onStart`/`onFrame` and command transport offline. Locutus also couples strategy, scouting, placement and combat; replacing the foundation does not remove those dependencies. The prior Remastered bridge is not assumed compatible just because the DLL factory loads.
+
+## Improvement acceptance
+
+Keep the upstream baseline reproducible. For each candidate, cite matching map/build/situation replay frames, distinguish observed action from inferred purpose, change one behavior, and check construction/production/scouting/combat together. Compare against baseline on the same map and spawn before separate holdout evaluation. Only measured improvement is promoted. No online ladder restart is authorized by this setup; the user's stopped trial and current replay viewing remain untouched.
+
+Current user targets remain PvZ gateway-first, PvP 10/12 and PvT 23 Nexus. They are future policy constraints; the untouched Locutus baseline has **not** been silently configured to use them. APM throttling is not transplanted into NNB. Final rating and matchup skill still require real game evidence.
