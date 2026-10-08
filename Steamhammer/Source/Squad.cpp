@@ -1,4 +1,5 @@
 #include "Squad.h"
+#include "NNBPolicy.h"
 
 #include "ScoutManager.h"
 #include "UnitUtil.h"
@@ -479,7 +480,7 @@ bool Squad::needsToRegroup()
     }
 
 	// If we most recently retreated, don't attack again until retreatDuration frames have passed.
-	const int retreatDuration = 2 * 24;
+	const int retreatDuration = int(NNBPolicy::value("retreatHoldFrames", 2 * 24));
 	bool retreat = _lastRetreatSwitchVal && (BWAPI::Broodwar->getFrameCount() - _lastRetreatSwitch < retreatDuration);
 
 	if (!retreat)
@@ -487,7 +488,7 @@ bool Squad::needsToRegroup()
         // All other checks are done. Finally do the expensive combat simulation.
         int score = runCombatSim(_order.getPosition());
 
-		retreat = score < 0;
+		retreat = score < NNBPolicy::value("retreatScore", 0);
 		_lastRetreatSwitch = BWAPI::Broodwar->getFrameCount();
 		_lastRetreatSwitchVal = retreat;
 	}

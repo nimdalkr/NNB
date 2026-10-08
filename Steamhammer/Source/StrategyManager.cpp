@@ -1,4 +1,5 @@
 #include "StrategyManager.h"
+#include "NNBPolicy.h"
 #include "CombatCommander.h"
 #include "OpponentModel.h"
 #include "ProductionManager.h"
@@ -169,8 +170,8 @@ const bool StrategyManager::shouldExpandNow() const
 	numDepots += BuildingManager::Instance().getNumUnstarted(BWAPI::UnitTypes::Protoss_Nexus);
 
 	// if we have idle workers then we need a new expansion
-	if (WorkerManager::Instance().getNumIdleWorkers() > 10
-		|| (numDepots * 18) < UnitUtil::GetAllUnitCount(BWAPI::UnitTypes::Protoss_Probe))
+	if (WorkerManager::Instance().getNumIdleWorkers() > NNBPolicy::value("expandIdleWorkers", 10)
+		|| (numDepots * NNBPolicy::value("expandWorkersPerBase", 18)) < UnitUtil::GetAllUnitCount(BWAPI::UnitTypes::Protoss_Probe))
 	{
 		return true;
 	}

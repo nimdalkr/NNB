@@ -1,4 +1,5 @@
 #include "CombatCommander.h"
+#include "NNBPolicy.h"
 
 #include "Bases.h"
 #include "OpponentModel.h"
@@ -107,8 +108,21 @@ void CombatCommander::update(const BWAPI::Unitset & combatUnits)
         initializeSquads();
     }
 
+    if (_nnbOverrideActive && !_nnbBaseAggression && _nnbBaseAggressionAt == BWAPI::Broodwar->getFrameCount())
+        _nnbBaseAggression = true;
     if (!_goAggressive && _goAggressiveAt == BWAPI::Broodwar->getFrameCount())
         setAggression(true);
+
+    const double nnbAggression = NNBPolicy::value("aggression", -1);
+    if (nnbAggression >= 0) {
+        if (!_nnbOverrideActive) { _nnbBaseAggression = _goAggressive; _nnbBaseAggressionAt = _goAggressiveAt; }
+        if ((nnbAggression > 0) != _goAggressive) setAggression(nnbAggression > 0, true);
+        _nnbOverrideActive = true;
+    } else if (_nnbOverrideActive) {
+        setAggression(_nnbBaseAggression, true);
+        _goAggressiveAt = _nnbBaseAggressionAt;
+        _nnbOverrideActive = false;
+    }
 
     _combatUnits = combatUnits;
 

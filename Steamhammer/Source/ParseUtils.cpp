@@ -5,6 +5,7 @@
 #include "OpponentModel.h"
 #include "Random.h"
 #include "StrategyManager.h"
+#include "NNBPolicy.h"
 
 #include <regex>
 
@@ -400,9 +401,22 @@ void ParseUtils::ParseConfigFile(const std::string & filename)
 			}
 		}
 
+        // An explicit editor choice applies only to this matchup. Preserve other
+        // matchups' map overrides and opponent model rather than disabling them.
+        if (doc.HasMember("NNBPolicy") && doc["NNBPolicy"].IsObject()) {
+            const auto& nnb = doc["NNBPolicy"];
+            if (nnb.HasMember("enabled") && nnb["enabled"].IsBool() && nnb["enabled"].GetBool()
+                && nnb.HasMember("openings") && nnb["openings"].IsObject()
+                && nnb["openings"].HasMember(matchup) && nnb["openings"][matchup].IsString()) {
+                const char* choice = nnb["openings"][matchup].GetString();
+                if (strategy.HasMember("Strategies") && strategy["Strategies"].HasMember(choice))
+                    Config::Strategy::StrategyName = choice;
+            }
+        }
 		OpponentModel::Instance().setOpening();
     }
 
+    NNBPolicy::load(doc);
     Config::ConfigFile::ConfigFileParsed = true;
 }
 

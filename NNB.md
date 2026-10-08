@@ -3,8 +3,19 @@
 Locutus-based successor to Nimdal. Fork: https://github.com/nimdalkr/NNB
 
 The upstream reference is `bmnielsen/Locutus@4e96da0b7e31831ee97aaef153b2bef977a235e1`.
-Upstream gameplay sources and `Locutus.json` are unchanged. The original README and licenses remain in place.
-The first milestone is a reproducible baseline plus replay evidence retrieval; this is **not yet a working Remastered game integration or an improved playing policy**.
+The pinned upstream baseline, original DLL and `Locutus.json` are preserved. The working tree now contains explicit, optional editor hooks; it must not be described as unmodified Locutus. The original README and licenses remain in place.
+The local strategy editor, replay evidence retrieval and nine current-pool terrain caches are ready. This is **not yet a verified Remastered game integration or an improved playing policy**.
+
+## Open the editor
+
+```powershell
+.\scripts\build-editor.ps1
+.\scripts\start-editor.ps1
+```
+
+Open [NNB strategy workshop](http://127.0.0.1:8830/). It runs locally using Python's standard library and browser JavaScript, matching the existing local C++/replay workflow without a cloud service or login. Copy the read-only baseline to edit opening order, per-matchup selection, 18 operating settings and nine kinds of conditional adjustment. Korean pickers support common units, buildings, counts and locations; native command strings remain available for advanced editing.
+
+The editor writes profiles and creates **new artifact folders** with a DLL, configuration and verified map caches. It never launches a game. Turning the profile off stages the preserved pure DLL and original configuration. [Editor behavior, scope and validation](reports/EDITOR.md) documents the actual runtime connection and what is not implemented.
 
 ## Build and verify
 
@@ -18,7 +29,7 @@ cmake --build build/native-check --config Release
 python -m unittest discover -s tools -p test_*.py -v
 ```
 
-The DLL is written to `artifacts/baseline-<timestamp>/NNB.dll`; build artifacts are not distributed.
+The baseline script archives the pinned upstream commit into a new, isolated build folder before compiling. It never compiles the edited working tree as a baseline. The DLL is written to `artifacts/baseline-<timestamp>/NNB.dll`; the first successful baseline initializes `artifacts/upstream/`, and subsequent builds preserve it. Build artifacts are not distributed.
 The smoke check tests loading, exports, factory creation and destruction. It deliberately does not call `onStart` or run a game. Retargeting the old solution to v143 requires no strategy-source edits. Compiler warnings remain, including a reference-to-temporary warning in upstream `SquadData.cpp`; a successful build is not gameplay validation.
 
 ## Import the existing expert collection
@@ -37,13 +48,15 @@ Case retrieval requires the exact observed map hash, matchup and opening classif
 
 The original replay-level analysis/holdout split is preserved for both PvP perspectives. Holdout games are never returned for policy design. Default cases require the existing independent first-eight-minute comparison; `--provisional` explicitly permits other technically clean state extracts. No match returns an empty list, not a substituted map or build. Opening counts have 48-frame sampling resolution and do not prove exact command order or intention. Movement through mineral gaps must be checked at unit/command resolution before becoming a micro rule.
 
-## Current map and integration limitation
+## Current maps and integration status
 
 The locally collected pool contains Aiolos 1.0b, Attitude SE 2.1, Backrooms 1.1, Colorless Fate 1.1, KnockOut 1.4, Octagon SE 2.0, Odyssey:RE 2.0, Radeon 1.2 and Fighting Spirit 1.4. Each CHK is checked against its existing census SHA256; exact observed game hashes remain in the local map manifest. This matches the community [2026 Season 2 map listing](https://liquipedia.net/starcraft/Ladder/Maps); native ladder assets locally corroborate seven maps, and match evidence corroborates Aiolos, Radeon and Odyssey. The listing is not an official Blizzard announcement and should be refreshed when a new season is observed.
 
-Locutus's bundled BWTA removes online map analysis. `BWTA::analyze()` requires `bwapi-data/BWTA2/<mapHash>.bwta`, version 6; without it `onStart` stops. None of the nine current-map caches is present. `map_preflight.py` exits 2 for that blocker. Existing old VC120 BWTA binaries are not presumed compatible with the v143 build. Do not fabricate caches or rename another map's cache.
+Locutus's bundled BWTA removes online map analysis. `BWTA::analyze()` requires `bwapi-data/BWTA2/<mapHash>.bwta`, version 6; without it `onStart` stops. **All nine exact-map caches have now been generated with the full BWTA 2.2 analyzer and checked using the original Locutus cache loader.** Source map identity, exact starting depot anchors and start-to-start ground connectivity passed. The editor stages these caches after checking their recorded hashes. The earlier missing-cache blocker in the initial baseline report is resolved; that historical report remains unchanged.
 
-Before gameplay: generate the exact map caches with the full analyzer, validate base/resource/choke/path geometry, then test native `onStart`/`onFrame` and command transport offline. Locutus also couples strategy, scouting, placement and combat; replacing the foundation does not remove those dependencies. The prior Remastered bridge is not assumed compatible just because the DLL factory loads.
+[Terrain results and reproduction](reports/MAPS.md) contain the map table, pinned dependencies, exact CHK start-anchor correction and remaining geometry limits. Current local ladder/replay versions are used; a newer tournament map revision is not silently substituted.
+
+Before gameplay: test native `onStart`/`onFrame`, placement, unit-size pathing and command transport offline. Locutus also couples strategy, scouting, placement and combat; replacing the foundation does not remove those dependencies. The prior Remastered bridge is not assumed compatible just because the DLL factory loads.
 
 ## Improvement acceptance
 

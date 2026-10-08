@@ -1,0 +1,67 @@
+--- a/src/functions.h
++++ b/src/functions.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <boost/filesystem.hpp>
++#include <filesystem>
+ 
+ #include "VertexData.h"
+ #include <BWTA/RectangleArray.h>
+@@ -105,7 +105,7 @@
+   int min(int a, int b);
+   //void writeFile(const char* filename, const char* text, ...);
+ #ifdef OFFLINE
+-  #define BWTA_PATH "logs/"
++  #define BWTA_PATH "bwapi-data/BWTA2/"
+   const std::string LOG_FILE_PATH = "logs/BWTA.log";
+   #define log(message) { std::cout << message << std::endl; }
+ #else
+--- a/src/terrain_analysis.cpp
++++ b/src/terrain_analysis.cpp
+@@ -13,8 +13,8 @@
+ 
+     bool createDir(std::string& path)
+     {
+-        boost::filesystem::path dir(path);
+-        if (boost::filesystem::create_directories(dir)) {
++        std::filesystem::path dir(path);
++        if (std::filesystem::create_directories(dir)) {
+             return true;
+         }
+ 
+@@ -77,7 +77,7 @@
+ 
+ 		// Verify if "bwta2" directory exists, and create it if it doesn't.
+ 		auto bwtaPath = std::string(BWTA_PATH);
+-		if (! boost::filesystem::exists(bwtaPath)) {
++		if (! std::filesystem::exists(bwtaPath)) {
+ 			createDir(bwtaPath);    
+ 		}
+ 
+@@ -587,6 +587,25 @@
+ 	log(" [Linked choke points wiht regions in " << seconds << " seconds]");
+ 	start = end;
+ 
++	// NNB: a CHK start is an exact depot anchor, not a mineral-cluster estimate.
++	// Correct before nearest-object maps and all base distances are computed.
++	std::set<BWTA::BaseLocation*> anchored;
++	for (auto start : MapData::startLocations) {
++		BWTA::BaseLocationImpl* best = nullptr;
++		double distance = 10.0;
++		for (auto candidate : BWTA_Result::baselocations) {
++			if (anchored.count(candidate)) continue;
++			double d = candidate->getTilePosition().getDistance(start);
++			if (d < distance) { distance = d; best = static_cast<BWTA::BaseLocationImpl*>(candidate); }
++		}
++		if (!best) throw std::runtime_error("No resource base near CHK start");
++		if (best->tilePosition != start) {
++			std::cout << "CHK start anchor " << best->tilePosition << " -> " << start << std::endl;
++			best->tilePosition = start;
++			best->position = BWAPI::Position(start.x * 32 + 64, start.y * 32 + 48);
++		}
++		anchored.insert(best);
++	}
+ 	calculate_connectivity();
+ 	calculate_base_location_properties(get_component,components,BWTA_Result::baselocations);
+ 

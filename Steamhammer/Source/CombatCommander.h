@@ -16,6 +16,9 @@ class CombatCommander
     bool            _initialized;
 
 	bool			_goAggressive;
+    bool _nnbOverrideActive = false;
+    bool _nnbBaseAggression = true;
+    int _nnbBaseAggressionAt = -1;
     int             _goAggressiveAt;
 
 	BWAPI::Position	_reconTarget;
@@ -81,7 +84,7 @@ public:
 
 	void update(const BWAPI::Unitset & combatUnits);
 
-	void setAggression(bool aggressive) 
+	void setAggression(bool aggressive, bool nnbOverride = false)
 	{ 
 		if (aggressive && !_goAggressive)
 		{
@@ -101,9 +104,10 @@ public:
         if (!aggressive) _goAggressiveAt = -1;
 
 		_goAggressive = aggressive;  
+        if (!nnbOverride) { _nnbBaseAggression = aggressive; _nnbBaseAggressionAt = _goAggressiveAt; }
 	}
 	bool getAggression() const;
-    void setAggressionAt(int frame) { _goAggressiveAt = frame; };
+    void setAggressionAt(int frame) { _goAggressiveAt = frame; _nnbBaseAggressionAt = frame; };
     int getAggressionAt() const { return _goAggressiveAt; };
 
     void blockScouting();

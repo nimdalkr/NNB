@@ -177,6 +177,7 @@
     <ClCompile Include="source\WorkerData.cpp" />
     <ClCompile Include="source\WorkerManager.cpp" />
     <ClCompile Include="source\WorkerOrderTimer.cpp" />
+    <ClCompile Include="source\NNBPolicy.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\BWEB\src\Block.h" />

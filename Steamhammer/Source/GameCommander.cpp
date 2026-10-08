@@ -3,6 +3,7 @@
 #include "OpponentModel.h"
 #include "UnitUtil.h"
 #include "PathFinding.h"
+#include "NNBPolicy.h"
 
 using namespace UAlbertaBot;
 
@@ -53,6 +54,7 @@ void GameCommander::update()
 	// utility managers
 	_timerManager.startTimer(TimerManager::InformationManager);
 	InformationManager::Instance().update();
+	NNBPolicy::update();
 	_timerManager.stopTimer(TimerManager::InformationManager);
 
 #ifdef CRASH_DEBUG

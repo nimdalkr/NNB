@@ -1,0 +1,2 @@
+# Unified-diff context preserves the upstream source's indentation and blank lines.
+tools/terrain-build/*.patch -whitespace
