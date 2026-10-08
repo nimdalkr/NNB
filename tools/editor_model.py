@@ -11,6 +11,7 @@ import threading
 import uuid
 from corpus import ROOT, read_json, digest
 import build_provenance
+import judgment_catalog
 
 UPSTREAM = '4e96da0b7e31831ee97aaef153b2bef977a235e1'
 PROFILES = ROOT / 'data/editor/profiles'
@@ -49,6 +50,7 @@ ACTIONS = {
     'meleeShields': ('근접 유닛 후퇴 보호막',0,100,1,'개별 마이크로 기준'),
 }
 FACTS = {'seconds':'게임 시간 (초)','minerals':'보유 미네랄','gas':'보유 가스','supply':'현재 인구','workers':'완성된 일꾼 수','bases':'완성된 기지 수','army':'우리 병력 자원 가치','enemyVisibleArmy':'지금 보이는 적 병력 가치','enemyNearBase':'기지 768픽셀 안 보이는 적 병력 가치','enemyMainKnown':'상대 본진을 찾음 (1/0)','enemyCloakKnown':'상대 은폐 기술을 확인함 (1/0)'}
+FACTS.update(judgment_catalog.PLAN_FACTS)
 UNITS = {64:('Probe','프로브'),65:('Zealot','질럿'),66:('Dragoon','드라군'),67:('High Templar','하이 템플러'),68:('Archon','아칸'),60:('Corsair','커세어'),61:('Dark Templar','다크 템플러'),69:('Shuttle','셔틀'),70:('Scout','스카웃'),71:('Arbiter','아비터'),72:('Carrier','캐리어'),83:('Reaver','리버'),84:('Observer','옵저버'),154:('Nexus','넥서스'),155:('Robotics Facility','로보틱스'),156:('Pylon','파일런'),157:('Assimilator','어시밀레이터'),159:('Observatory','옵저버토리'),160:('Gateway','게이트웨이'),162:('Photon Cannon','포톤 캐논'),163:('Citadel of Adun','아둔'),164:('Cybernetics Core','사이버네틱스 코어'),165:('Templar Archives','템플러 아카이브'),166:('Forge','포지'),167:('Stargate','스타게이트'),169:('Fleet Beacon','플릿 비콘'),170:('Arbiter Tribunal','아비터 트리뷰널'),171:('Robotics Support Bay','로보틱스 서포트 베이'),172:('Shield Battery','쉴드 배터리'),37:('Zergling','적 저글링'),38:('Hydralisk','적 히드라'),43:('Mutalisk','적 뮤탈'),103:('Lurker','적 럴커'),0:('Marine','적 마린'),2:('Vulture','적 벌처'),5:('Siege Tank Tank Mode','적 탱크'),8:('Wraith','적 레이스')}
 
 
@@ -86,7 +88,11 @@ def allowed_build_items():
     result={x[0].lower() for id,x in UNITS.items() if id>=60 and id not in (103,) and id not in (68,)}
     # Existing upstream commands/upgrades remain available, including argument-bearing forms.
     for b in baseline()['config']['Strategy']['Strategies'].values():
-        for item in b.get('OpeningBuildOrder',[]): result.add(item.lower())
+        for item in b.get('OpeningBuildOrder',[]):
+            result.add(item.lower())
+            # Form editing must accept the same atomic actions used in chained steps.
+            for atom in re.sub(r'^\d+\s+x\s+','',item.lower()).split(' then '):
+                result.add(atom.split(' @ ',1)[0])
     result.update(['go aggressive','go defensive','go scout','go start gas','go stop gas','go scout once around','go queue barrier'])
     return result
 
@@ -110,6 +116,7 @@ def validate(p):
     if p['id']=='baseline':raise ValueError('순정 기준본은 변경할 수 없습니다. 복사본을 만드세요.')
     if not isinstance(p.get('name'),str) or not 1<=len(p['name'])<=80:raise ValueError('이름을 입력하세요')
     if type(p.get('enabled')) is not bool:raise ValueError('프로필 사용 여부가 잘못되었습니다')
+    judgment_catalog.validate(p.get('recognition',{}))
     config=p['config']; original=baseline()['config']
     # User input cannot alter IO paths, hidden-information flags or unsupported parser sections.
     sanitized=copy.deepcopy(original)
@@ -138,6 +145,8 @@ def validate(p):
         if not isinstance(steps,list) or not 1<=len(steps)<=300 or any(not valid_step(x,allowed) for x in steps):raise ValueError('지원하지 않는 빌드 항목이 있습니다')
         b['OpeningBuildOrder']=[x.strip() for x in steps]
     if not set(original['Strategy']['Strategies']).issubset(strategies):raise ValueError('순정 빌드는 목록에서 삭제하지 말고 복사해 수정하세요')
+    labels=p.get('buildLabels',{})
+    if not isinstance(labels,dict) or any(k not in strategies or not isinstance(v,str) or not 1<=len(v)<=80 for k,v in labels.items()):raise ValueError('빌드 표시 이름은 1~80자로 입력하세요')
     sanitized['Strategy']['Strategies']=copy.deepcopy(strategies)
     for m in ['PvP','PvT','PvZ']:
         v=p['matchups'][m]
@@ -212,7 +221,7 @@ def compile_profile(p):
     if p['id']!='baseline':p=validate(copy.deepcopy(p))
     config=copy.deepcopy(p['config'])
     if p['id']=='baseline' or not p['enabled']:return baseline()['config']
-    config['NNBPolicy']={'enabled':True,'rules':p['rules'],
+    config['NNBPolicy']={'enabled':True,'rules':p['rules'],'recognition':p.get('recognition',{}),
                          'openings':{m:v['opening'] for m,v in p['matchups'].items() if v['fixed']}}
     return config
 
@@ -270,4 +279,4 @@ def catalog():
     return dict(fields=[dict(section=s,key=k,label=l,type=t,min=a,max=b,hint=h) for s,k,l,t,a,b,h in FIELDS],
                 actions={k:dict(label=v[0],min=v[1],max=v[2],step=v[3],hint=v[4]) for k,v in ACTIONS.items()},facts=FACTS,
                 units={str(k):dict(name=v[0],label=v[1]) for k,v in UNITS.items()},
-                buildItems=sorted(allowed_build_items()),maps=[{'name':m['name'],'hash':m['bwapiMapHashes'][0]} for m in read_json(ROOT/'data/maps.json')])
+                judgments=judgment_catalog.catalog(),buildItems=sorted(allowed_build_items()),maps=[{'name':m['name'],'hash':m['bwapiMapHashes'][0]} for m in read_json(ROOT/'data/maps.json')])

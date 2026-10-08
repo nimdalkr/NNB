@@ -20,7 +20,7 @@ inline bool compare(double a,const std::string& op,double b) {
     if(op==">")return a>b;if(op=="<")return a<b;throw std::runtime_error("Unknown comparison");
 }
 inline bool validField(const std::string&s) {
-    static const std::set<std::string> names={"seconds","minerals","gas","supply","workers","bases","army","enemyVisibleArmy","enemyNearBase","enemyMainKnown","enemyCloakKnown"};
+    static const std::set<std::string> names={"seconds","minerals","gas","supply","workers","bases","army","enemyVisibleArmy","enemyNearBase","enemyMainKnown","enemyCloakKnown","plan_proxy","plan_worker","plan_fast","plan_notFast","plan_heavy","plan_hydra","plan_wall","plan_dark"};
     if(names.count(s))return true;
     for(auto prefix:{std::string("own_"),std::string("visible_")})if(s.rfind(prefix,0)==0){
         auto id=s.substr(prefix.size());if(id.empty()||id.find_first_not_of("0123456789")!=std::string::npos)return false;

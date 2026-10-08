@@ -7,6 +7,7 @@ import math
 import re
 import subprocess
 from corpus import ROOT, digest
+from judgment_catalog import PLAN_FACTS
 
 VERSION = 1
 GROUPS = {
@@ -49,6 +50,7 @@ def catalog():
 
 def fingerprint(p):
     payload={k:p[k] for k in ('enabled','config','matchups','rules')}
+    payload['recognition']=p.get('recognition',{})
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=True,separators=(',',':')).encode()).hexdigest()
 
 
@@ -102,11 +104,17 @@ def bounds(rule):
         if op in ('<=','=='):hi=min(hi,v)
         if op=='>':lo=max(lo,math.nextafter(float(v),math.inf))
         if op=='<':hi=min(hi,math.nextafter(float(v),-math.inf))
-        if f.startswith(('own_','visible_')) or f in ('workers','bases','enemyMainKnown','enemyCloakKnown'):
+        if f.startswith(('own_','visible_','plan_')) or f in ('workers','bases','enemyMainKnown','enemyCloakKnown'):
             lo=math.ceil(lo);hi=math.floor(hi) if math.isfinite(hi) else hi
-        if f in ('enemyMainKnown','enemyCloakKnown'):hi=min(hi,1)
+        if f in ('enemyMainKnown','enemyCloakKnown') or f.startswith('plan_'):hi=min(hi,1)
         if f=='supply':hi=min(hi,200)
         values[f]=(lo,hi)
+    # OpponentPlan holds exactly one current plan, or Unknown (all flags zero).
+    selected=[f for f,(lo,hi) in values.items() if f in PLAN_FACTS and lo>0]
+    for selected_plan in selected:
+        for field in PLAN_FACTS:
+            if field!=selected_plan:
+                lo,hi=values.get(field,(0,1));values[field]=(lo,min(hi,0))
     return values
 
 
@@ -127,6 +135,19 @@ def review(profile):
         issues.append(value)
     def impact(change,groups):
         impacts.append({'change':change,'areas':list(dict.fromkeys(groups))})
+    import judgment_catalog
+    for group in judgment_catalog.catalog():
+        changed_fields=[f['label'] for f in group['fields'] if p.get('recognition',{}).get(f['key'],f['default'])!=f['default']]
+        if changed_fields:
+            impact('전략 추정 · '+group['label'],['scouting','combat','production','economy'])
+            issue('RECOGNITION_CHANGE','review','전략 추정 변경은 방어와 테크에도 영향을 줍니다',', '.join(changed_fields)+' 변경. 같은 맵·빌드의 정찰 시점과 관측 누락에 따른 오판을 확인하세요.',group['label'])
+    if any(r['enabled'] and any(c['field'].startswith('plan_') for c in r['conditions']) for r in p['rules']) and not race_value(p['config'],'Strategy','UsePlanRecognizer'):
+        issue('RECOGNIZER_DISABLED','error','추정을 꺼 둔 채 추정 결과에 대응하고 있습니다','전략 추정 사용을 켜거나 해당 대응 규칙을 꺼 주세요.','조건과 판단')
+    for r in p['rules']:
+        if not r['enabled']:continue
+        for field,(lo,hi) in bounds(r).items():
+            if field.startswith('plan_') and lo>0 and p.get('recognition',{}).get(field[5:]+'Enabled',1)==0:
+                issue('PLAN_DISABLED','error','사용하지 않는 전략 추정을 조건으로 쓰고 있습니다','해당 전략 추정을 켜거나 이 대응 규칙을 꺼 주세요.','규칙 · '+r.get('name',r['id']))
     try:names,ids=catalog()
     except (ValueError,OSError,subprocess.SubprocessError,json.JSONDecodeError) as e:
         issue('CHECKER_MISSING','error','연결 검사를 실행할 수 없습니다',str(e),'검사기')
@@ -222,7 +243,7 @@ def review(profile):
             restores=[a for a in rules[:i] if covers_scope(a,r) and feasible(a) and a['actions'].get('gasWorkers',0)>0]
             severity='error' if r['mode']=='once' and not restores else 'review'
             issue('RULE_GAS_STOP',severity,'가스 중단 규칙과 재개 경로를 확인하세요','한 번 충족하면 채취가 계속 0명입니다. 중단하는 모든 범위를 포함하는 상위 재개 규칙이 없으면 후속 테크가 막힙니다.' if severity=='error' else '조건 해제 또는 우선 재개 규칙이 테크 생산 전에 작동하는지 확인하세요.',where)
-        if r['mode']=='once' and any(c['field'] in ('enemyNearBase','enemyVisibleArmy','enemyCloakKnown') or c['field'].startswith('visible_') for c in r['conditions']):
+        if r['mode']=='once' and any(c['field'] in ('enemyNearBase','enemyVisibleArmy','enemyCloakKnown','plan_worker','plan_notFast') or c['field'].startswith('visible_') for c in r['conditions']):
             issue('LATCHED_REACTION','review','적이 사라져도 대응이 유지됩니다','일시적인 적 상황에 경기 내내 유지되는 행동을 붙였습니다. 해제 방식과 정상 운영 복귀를 확인하세요.',where)
         if r['actions'].get('aggression')==1:
             issue('ATTACK_DEFENSE','review','출발 조건과 방어·증원·테크를 함께 확인하세요','공격 시각은 순정의 전진 러시 종료와 후속 테크 전환에도 쓰입니다. 본진 방어, 첫 출발, 후속 합류, 테크 전환을 함께 확인하세요.',where)

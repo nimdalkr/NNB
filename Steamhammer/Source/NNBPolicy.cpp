@@ -1,26 +1,34 @@
 #include "Common.h"
 #include "NNBPolicy.h"
 #include "NNBRuleEngine.h"
+#include "NNBPlanSettings.h"
+#include "OpponentModel.h"
 #include "InformationManager.h"
 #include "Config.h"
 #include <fstream>
 namespace NNBPolicy {
 namespace {
 NNB::RuleEngine engine;
+NNB::PlanSettings recognition;
 int maxWorkers=75,gasWorkers=3,meleeHP=0,meleeShields=0;
 std::vector<std::string> lastMatched;
 }
 void load(const rapidjson::Value& doc){
-    engine=NNB::RuleEngine();lastMatched.clear();
+    engine=NNB::RuleEngine();recognition=NNB::PlanSettings();lastMatched.clear();
     if(!doc.HasMember("NNBPolicy"))return;
     try{engine.load(doc["NNBPolicy"]);}catch(const std::exception& e){engine=NNB::RuleEngine();Log().Get()<<"NNB policy disabled: "<<e.what();return;}
     if(!engine.enabled)return;
+    if(doc["NNBPolicy"].HasMember("recognition")){
+        try{recognition.load(doc["NNBPolicy"]["recognition"]);}
+        catch(const std::exception& e){recognition=NNB::PlanSettings();Log().Get()<<"NNB recognition defaults restored: "<<e.what();}
+    }
     if(doc.HasMember("Macro")&&doc["Macro"].HasMember("AbsoluteMaxWorkers")&&doc["Macro"]["AbsoluteMaxWorkers"].IsInt())
         Config::Macro::AbsoluteMaxWorkers=std::max(4,std::min(100,doc["Macro"]["AbsoluteMaxWorkers"].GetInt()));
     maxWorkers=Config::Macro::AbsoluteMaxWorkers;gasWorkers=Config::Macro::WorkersPerRefinery;
     meleeHP=Config::Micro::RetreatMeleeUnitHP;meleeShields=Config::Micro::RetreatMeleeUnitShields;
 }
 double value(const char* key,double fallback){return engine.get(key,fallback);}
+int planValue(const char* key){return recognition.get(key);}
 void update(){
     if(!engine.enabled||BWAPI::Broodwar->getFrameCount()%8)return;
     auto self=BWAPI::Broodwar->self(), enemy=BWAPI::Broodwar->enemy();
@@ -42,6 +50,9 @@ void update(){
     auto& info=UAlbertaBot::InformationManager::Instance();
     f["enemyMainKnown"]=info.getEnemyMainBaseLocation()!=nullptr;
     f["enemyCloakKnown"]=info.enemyHasCloakTech();
+    using UAlbertaBot::OpeningPlan;
+    auto plan=UAlbertaBot::OpponentModel::Instance().getEnemyPlan();
+    for(auto entry:std::map<OpeningPlan,const char*>{{OpeningPlan::Proxy,"plan_proxy"},{OpeningPlan::WorkerRush,"plan_worker"},{OpeningPlan::FastRush,"plan_fast"},{OpeningPlan::NotFastRush,"plan_notFast"},{OpeningPlan::HeavyRush,"plan_heavy"},{OpeningPlan::HydraBust,"plan_hydra"},{OpeningPlan::WallIn,"plan_wall"},{OpeningPlan::DarkTemplar,"plan_dark"}})f[entry.second]=plan==entry.first?1:0;
     std::string matchup="Pv"+enemy->getRace().getName().substr(0,1);
     engine.evaluate(f,matchup,BWAPI::Broodwar->mapHash(),Config::Strategy::StrategyName);
     Config::Macro::AbsoluteMaxWorkers=int(value("maxWorkers",maxWorkers));

@@ -17,6 +17,8 @@ Open [NNB strategy workshop](http://127.0.0.1:8830/). It runs locally using Pyth
 
 The editor writes profiles and creates **new artifact folders** with a DLL, configuration and verified map caches. It never launches a game. Turning the profile off stages the preserved pure DLL and original configuration. [Editor behavior, scope and validation](reports/EDITOR.md) documents the actual runtime connection and what is not implemented.
 
+[Native judgments and scouting inference](reports/JUDGMENTS.md) now expose the existing operating defaults, eight active recognition branches and prepared response templates. Opening names and steps have Korean explanations and structured editing. Recognition thresholds are opt-in editor settings with the pinned defaults preserved; 156,000 synthetic recognition/update comparisons match the original. Sensor collection and gameplay are outside this comparison.
+
 [Cross-system review](reports/EDITOR-SAFETY.md) shows affected production, economy, scouting, combat and placement; blocks known prerequisite/parser/priority conflicts; previews coupled prerequisite repairs; and preserves previous saved revisions. Both the UI and staging API enforce the static checks. Generated candidates retain the exact profile and review report and remain explicitly unverified for gameplay. The native parser's own-race setting semantics and integer/double serialization are preserved.
 
 ## Build and verify

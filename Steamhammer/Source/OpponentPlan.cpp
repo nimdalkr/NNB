@@ -1,4 +1,5 @@
 #include "OpponentPlan.h"
+#include "NNBPolicy.h"
 
 #include "InformationManager.h"
 #include "ScoutManager.h"
@@ -34,13 +35,13 @@ bool OpponentPlan::recognizeWorkerRush()
 	{
 		const UnitInfo & ui(kv.second);
 
-		if (ui.type.isWorker() && ui.unit->isVisible() && myOrigin.getDistance(ui.unit->getPosition()) < 1000)
+		if (ui.type.isWorker() && ui.unit->isVisible() && myOrigin.getDistance(ui.unit->getPosition()) < NNBPolicy::planValue("workerRadius"))
 		{
 			++enemyWorkerRushCount;
 		}
 	}
 
-	return enemyWorkerRushCount >= 3;
+	return enemyWorkerRushCount >= NNBPolicy::planValue("workerCount");
 }
 
 // Factory, possibly with starport, and no sign of many marines intended.
@@ -102,7 +103,7 @@ void OpponentPlan::recognize()
 	// Recognize fast plans first, slow plans below.
 
 	// Recognize in-base proxy buildings. Info manager does it for us.
-	if (InformationManager::Instance().getEnemyProxy())
+	if (NNBPolicy::planValue("proxyEnabled") && InformationManager::Instance().getEnemyProxy())
 	{
 		_openingPlan = OpeningPlan::Proxy;
 		_planIsFixed = true;
@@ -112,7 +113,7 @@ void OpponentPlan::recognize()
     int frame = BWAPI::Broodwar->getFrameCount();
 
 	// Recognize worker rushes.
-	if (frame < 3000 && recognizeWorkerRush())
+	if (NNBPolicy::planValue("workerEnabled") && frame < NNBPolicy::planValue("workerUntil") && recognizeWorkerRush())
 	{
 		_openingPlan = OpeningPlan::WorkerRush;
 		return;
@@ -122,12 +123,12 @@ void OpponentPlan::recognize()
 	snap.takeEnemy();
 
 	// Recognize fast rushes.
-	if (snap.getFrame(BWAPI::UnitTypes::Zerg_Spawning_Pool) < 1600 ||
-		snap.getFrame(BWAPI::UnitTypes::Zerg_Zergling) < 3200 ||
-		snap.getFrame(BWAPI::UnitTypes::Protoss_Gateway) < 1750 ||
-		snap.getFrame(BWAPI::UnitTypes::Protoss_Zealot) < 3300 ||
-		snap.getFrame(BWAPI::UnitTypes::Terran_Barracks) < 1400 ||
-		snap.getFrame(BWAPI::UnitTypes::Terran_Marine) < 3000)
+	if (NNBPolicy::planValue("fastEnabled") && (snap.getFrame(BWAPI::UnitTypes::Zerg_Spawning_Pool) < NNBPolicy::planValue("fastPool") ||
+		snap.getFrame(BWAPI::UnitTypes::Zerg_Zergling) < NNBPolicy::planValue("fastLing") ||
+		snap.getFrame(BWAPI::UnitTypes::Protoss_Gateway) < NNBPolicy::planValue("fastGateway") ||
+		snap.getFrame(BWAPI::UnitTypes::Protoss_Zealot) < NNBPolicy::planValue("fastZealot") ||
+		snap.getFrame(BWAPI::UnitTypes::Terran_Barracks) < NNBPolicy::planValue("fastBarracks") ||
+		snap.getFrame(BWAPI::UnitTypes::Terran_Marine) < NNBPolicy::planValue("fastMarine")))
 	{
 		_openingPlan = OpeningPlan::FastRush;
 		_planIsFixed = true;
@@ -142,11 +143,11 @@ void OpponentPlan::recognize()
 
     // When we know the enemy is not doing a fast plan, set it
     // May get overridden by a more appropriate plan below later on
-    if (_openingPlan == OpeningPlan::Unknown && (
-        snap.getCount(BWAPI::UnitTypes::Zerg_Drone) > 6 ||     // 4- or 5-pool
-        snap.getCount(BWAPI::UnitTypes::Terran_SCV) > 8 ||     // BBS
-        snap.getCount(BWAPI::UnitTypes::Protoss_Probe) > 9) || // 9-gate
-        frame > 8000) // Failsafe if we have no other information at this point
+    if (NNBPolicy::planValue("notFastEnabled") && (_openingPlan == OpeningPlan::Unknown && (
+        snap.getCount(BWAPI::UnitTypes::Zerg_Drone) > NNBPolicy::planValue("notFastDrone") ||     // 4- or 5-pool
+        snap.getCount(BWAPI::UnitTypes::Terran_SCV) > NNBPolicy::planValue("notFastSCV") ||     // BBS
+        snap.getCount(BWAPI::UnitTypes::Protoss_Probe) > NNBPolicy::planValue("notFastProbe")) || // 9-gate
+        frame > NNBPolicy::planValue("notFastAfter"))) // Failsafe if we have no other information at this point
     {
         _openingPlan = OpeningPlan::NotFastRush;
     }
@@ -154,27 +155,27 @@ void OpponentPlan::recognize()
 	// Recognize slower rushes.
 	// TODO make sure we've seen the bare geyser in the enemy base!
 	// TODO seeing a unit carrying gas also means the enemy has gas
-	if (frame < 5500 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) > 10
+	if (NNBPolicy::planValue("heavyEnabled") && (frame < NNBPolicy::planValue("heavyLingUntil") &&
+        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) > NNBPolicy::planValue("heavyLingCount")
         ||
-        frame > 4000 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) == 1 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Drone) <= 9
+        frame > NNBPolicy::planValue("oneHatchAfter") &&
+        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) == NNBPolicy::planValue("oneHatchCount") &&
+        snap.getCount(BWAPI::UnitTypes::Zerg_Drone) <= NNBPolicy::planValue("oneHatchDrones")
         ||
-        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) >= 2 &&
+        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) >= NNBPolicy::planValue("heavyHatchCount") &&
 		snap.getCount(BWAPI::UnitTypes::Zerg_Spawning_Pool) > 0 &&
 		snap.getCount(BWAPI::UnitTypes::Zerg_Extractor) == 0 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) > 5
+        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) > NNBPolicy::planValue("heavyHatchLings")
 		||
-		snap.getCount(BWAPI::UnitTypes::Terran_Barracks) >= 2 &&
+		snap.getCount(BWAPI::UnitTypes::Terran_Barracks) >= NNBPolicy::planValue("heavyBarracks") &&
 		snap.getCount(BWAPI::UnitTypes::Terran_Refinery) == 0 &&
-		snap.getCount(BWAPI::UnitTypes::Terran_Command_Center) <= 1 &&
-		snap.getCount(BWAPI::UnitTypes::Terran_Marine) > 3
+		snap.getCount(BWAPI::UnitTypes::Terran_Command_Center) <= NNBPolicy::planValue("heavyCC") &&
+		snap.getCount(BWAPI::UnitTypes::Terran_Marine) > NNBPolicy::planValue("heavyMarines")
 		||
-		snap.getCount(BWAPI::UnitTypes::Protoss_Gateway) >= 2 &&
+		snap.getCount(BWAPI::UnitTypes::Protoss_Gateway) >= NNBPolicy::planValue("heavyGateways") &&
 		snap.getCount(BWAPI::UnitTypes::Protoss_Assimilator) == 0 &&
-		snap.getCount(BWAPI::UnitTypes::Protoss_Nexus) <= 1 &&
-		snap.getCount(BWAPI::UnitTypes::Protoss_Zealot) > 3)
+		snap.getCount(BWAPI::UnitTypes::Protoss_Nexus) <= NNBPolicy::planValue("heavyNexus") &&
+		snap.getCount(BWAPI::UnitTypes::Protoss_Zealot) > NNBPolicy::planValue("heavyZealots")))
 	{
 		_openingPlan = OpeningPlan::HeavyRush;
 		_planIsFixed = true;
@@ -182,10 +183,10 @@ void OpponentPlan::recognize()
 	}
 
     // Recognize a hydra bust
-    if (frame < 7000 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) >= 2 &&
+    if (NNBPolicy::planValue("hydraEnabled") && frame < NNBPolicy::planValue("hydraUntil") &&
+        snap.getCount(BWAPI::UnitTypes::Zerg_Hatchery) >= NNBPolicy::planValue("hydraHatches") &&
         snap.getCount(BWAPI::UnitTypes::Zerg_Hydralisk_Den) > 0 &&
-        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) < 3)
+        snap.getCount(BWAPI::UnitTypes::Zerg_Zergling) < NNBPolicy::planValue("hydraLings"))
     {
         _openingPlan = OpeningPlan::HydraBust;
         _planIsFixed = true;
@@ -193,7 +194,7 @@ void OpponentPlan::recognize()
     }
 
     // Terran wall-in
-    if (frame < 6000 &&
+    if (NNBPolicy::planValue("wallEnabled") && frame < NNBPolicy::planValue("wallUntil") &&
         BWAPI::Broodwar->enemy()->getRace() == BWAPI::Races::Terran &&
         InformationManager::Instance().enemyHasWall())
     {
@@ -203,8 +204,8 @@ void OpponentPlan::recognize()
     }
 
     // Protoss dark templar opening
-    if (frame < 10000 &&
-        snap.getCount(BWAPI::UnitTypes::Protoss_Dark_Templar) > 0)
+    if (NNBPolicy::planValue("darkEnabled") && frame < NNBPolicy::planValue("darkUntil") &&
+        snap.getCount(BWAPI::UnitTypes::Protoss_Dark_Templar) > NNBPolicy::planValue("darkCount"))
     {
         _openingPlan = OpeningPlan::DarkTemplar;
         _planIsFixed = true;
@@ -284,7 +285,7 @@ void OpponentPlan::update()
 
 	int frame = BWAPI::Broodwar->getFrameCount();
 
-	if (frame > 100 && frame < 10000 &&       // only try to recognize openings
+	if (frame > NNBPolicy::planValue("startFrame") && frame < NNBPolicy::planValue("endFrame") &&       // only try to recognize openings
 		frame % 12 == 7)                      // update interval
 	{
 		recognize();

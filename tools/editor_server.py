@@ -50,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path=='/api/cases':
                 target={k:float(q[k][0]) for k in ['workers','armyValue','bases'] if k in q and q[k][0]}
                 return self.reply(find_cases(ROOT/'data',q['map'][0],q['matchup'][0].lower(),q['opening'][0],int(q.get('frame',['4000'])[0]),target=target,limit=5))
-            assets={'/':'index.html','/app.js':'app.js','/safety.js':'safety.js','/style.css':'style.css'}
+            assets={'/':'index.html','/app.js':'app.js','/safety.js':'safety.js','/opening-language.js':'opening-language.js','/opening.js':'opening.js','/judgments.js':'judgments.js','/style.css':'style.css'}
             if url.path not in assets:return self.reply({'error':'Not found'},404)
             file=ROOT/'editor'/assets[url.path]
             mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}[file.suffix]
