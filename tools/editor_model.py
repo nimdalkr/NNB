@@ -14,6 +14,7 @@ import build_provenance
 
 UPSTREAM = '4e96da0b7e31831ee97aaef153b2bef977a235e1'
 PROFILES = ROOT / 'data/editor/profiles'
+HISTORY = ROOT / 'data/editor/history'
 PROFILE_LOCK = threading.Lock()
 FIELDS = [
     ('Micro','KiteWithRangedUnits','원거리 유닛 치고 빠지기','bool',0,1,'원거리 마이크로'),
@@ -120,6 +121,11 @@ def validate(p):
                 if type(v) is not bool:raise ValueError(label+'은 켜기/끄기 값입니다')
             else:number(v,low,high,kind=='int')
         if isinstance(value,dict) and (not value or set(value)-{'Zerg','Terran','Protoss','Unknown'}):raise ValueError('종족별 설정이 잘못되었습니다')
+        # RapidJSON's IsDouble/IsInt are distinct in the native Get*ByRace parser.
+        # Browser JSON serializes 2.0 as 2; restore the declared type before export.
+        if kind in ('float','int'):
+            cast=float if kind=='float' else int
+            value={race:cast(v) for race,v in value.items()} if isinstance(value,dict) else cast(value)
         sanitized[s][k]=value
     strategies=config['Strategy']['Strategies']
     if not isinstance(strategies,dict) or len(strategies)>200:raise ValueError('빌드 목록이 잘못되었습니다')
@@ -130,6 +136,7 @@ def validate(p):
         if b.get('OpeningGroup') not in ['zealots','dragoons','dark templar','carriers','drop']:raise ValueError('후속 운영 계열이 잘못되었습니다')
         steps=b.get('OpeningBuildOrder')
         if not isinstance(steps,list) or not 1<=len(steps)<=300 or any(not valid_step(x,allowed) for x in steps):raise ValueError('지원하지 않는 빌드 항목이 있습니다')
+        b['OpeningBuildOrder']=[x.strip() for x in steps]
     if not set(original['Strategy']['Strategies']).issubset(strategies):raise ValueError('순정 빌드는 목록에서 삭제하지 말고 복사해 수정하세요')
     sanitized['Strategy']['Strategies']=copy.deepcopy(strategies)
     for m in ['PvP','PvT','PvZ']:
@@ -154,6 +161,11 @@ def validate(p):
         for key,v in r['actions'].items():
             if key not in ACTIONS:raise ValueError('지원하지 않는 행동입니다')
             _,low,high,step,_=ACTIONS[key];number(v,low,high,True)
+    positions={r['id']:i for i,r in enumerate(p['rules'])}
+    for r in p['rules']:
+        overrides=r.get('overrides',[])
+        if not isinstance(overrides,list) or any(not isinstance(x,str) or x not in positions or positions[x]<=positions[r['id']] for x in overrides):
+            raise ValueError('명시한 우선 관계가 현재 규칙 순서와 맞지 않습니다. 연결 검사에서 다시 지정하세요.')
     p['config']=sanitized
     return p
 
@@ -168,9 +180,32 @@ def _save(p,create=False):
     path=PROFILES/(p['id']+'.json')
     if path.exists() and read_json(path)['revision']!=p['revision']:raise ValueError('다른 창에서 수정되었습니다. 다시 불러오세요.')
     if not path.exists() and not create:raise ValueError('프로필이 없습니다')
+    if path.exists():
+        old=read_json(path);history=HISTORY/p['id'];history.mkdir(parents=True,exist_ok=True)
+        archive=history/(str(old['revision'])+'.json')
+        if not archive.exists():
+            with archive.open('x',encoding='utf-8') as f:json.dump(old,f,ensure_ascii=False,indent=2)
     p['revision']+=1
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(p,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(path)
     return p
+
+
+def history(id):
+    valid_id(id);folder=HISTORY/id
+    return [dict(revision=p['revision'],name=p['name'],enabled=p['enabled']) for p in
+            sorted((read_json(f) for f in folder.glob('*.json')),key=lambda p:p['revision'],reverse=True)]
+
+
+def restore(id,revision,expected_revision):
+    if id=='baseline':raise ValueError('순정 기준본은 변경할 수 없습니다')
+    valid_id(id)
+    if type(revision) is not int or revision<1:raise ValueError('잘못된 저장 번호')
+    with PROFILE_LOCK:
+        current=load_profile(id)
+        if current['revision']!=expected_revision:raise ValueError('다른 창에서 수정되었습니다. 다시 불러오세요.')
+        previous=read_json(HISTORY/id/(str(revision)+'.json'))
+        previous['revision']=current['revision']
+        return _save(previous)
 
 
 def compile_profile(p):
@@ -198,6 +233,10 @@ def verified_caches():
 
 
 def stage(p):
+    import editor_safety
+    safety=editor_safety.review(p)
+    if safety['blocked']:
+        raise ValueError(f"연결 검사에서 {safety['errors']}개 문제를 찾았습니다. 초안은 저장할 수 있지만 문제를 수정하기 전 시험본을 만들 수 없습니다.")
     config=compile_profile(p)
     baseline_mode=p['id']=='baseline' or not p['enabled']
     dll=ROOT/'artifacts/upstream/NNB.dll' if baseline_mode else ROOT/'Release/Locutus.dll'
@@ -217,7 +256,11 @@ def stage(p):
     copied=[]
     for cache in verified:
         shutil.copy2(cache,caches/cache.name);copied.append(cache.stem)
-    report=dict(profileId=p['id'],revision=p['revision'],baseline=baseline_mode,dllSha256=digest(folder/'NNB.dll'),configSha256=digest(ai/'Locutus.json'),mapCaches=len(copied),nativeGameTested=False,directory=str(folder),gameLaunched=False)
+    report=dict(profileId=p['id'],revision=p['revision'],baseline=baseline_mode,dllSha256=digest(folder/'NNB.dll'),configSha256=digest(ai/'Locutus.json'),mapCaches=len(copied),nativeGameTested=False,directory=str(folder),gameLaunched=False,
+                intendedUse='baseline-comparison' if baseline_mode else 'offline-candidate',productionEligible=False,
+                profileFingerprint=safety['profileFingerprint'],staticErrors=safety['errors'],reviewItems=safety['reviews'])
+    (folder/'compatibility.json').write_text(json.dumps(safety,ensure_ascii=False,indent=2),encoding='utf-8')
+    (folder/'profile.json').write_text(json.dumps(p,ensure_ascii=False,indent=2),encoding='utf-8')
     (folder/'manifest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     (ROOT/'data/editor/last-stage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report

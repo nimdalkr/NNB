@@ -6,7 +6,8 @@ import math
 from pathlib import Path
 import subprocess
 from urllib.parse import urlsplit,parse_qs
-from editor_model import ROOT,baseline,catalog,clone,load_profile,list_profiles,save,stage,validate,compile_profile
+from editor_model import ROOT,baseline,catalog,clone,load_profile,list_profiles,save,stage,validate,compile_profile,history,restore
+import editor_safety
 from corpus import read_json,find_cases
 
 
@@ -41,6 +42,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             url=urlsplit(self.path);q=parse_qs(url.query)
             if url.path=='/api/state':return self.reply(dict(profiles=list_profiles(),catalog=catalog(),terrain=terrain(),cohort=read_json(ROOT/'data/summary.json'),lastStage=read_json(ROOT/'data/editor/last-stage.json') if (ROOT/'data/editor/last-stage.json').exists() else None))
+            if url.path=='/api/history':return self.reply(history(q.get('id',['baseline'])[0]))
             if url.path=='/api/terrain':
                 h=q.get('hash',[''])[0]
                 if h not in [m['hash'] for m in catalog()['maps']]:raise ValueError('알 수 없는 맵')
@@ -48,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path=='/api/cases':
                 target={k:float(q[k][0]) for k in ['workers','armyValue','bases'] if k in q and q[k][0]}
                 return self.reply(find_cases(ROOT/'data',q['map'][0],q['matchup'][0].lower(),q['opening'][0],int(q.get('frame',['4000'])[0]),target=target,limit=5))
-            assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}
+            assets={'/':'index.html','/app.js':'app.js','/safety.js':'safety.js','/style.css':'style.css'}
             if url.path not in assets:return self.reply({'error':'Not found'},404)
             file=ROOT/'editor'/assets[url.path]
             mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}[file.suffix]
@@ -65,6 +67,9 @@ class Handler(BaseHTTPRequestHandler):
             d=json.loads(self.rfile.read(size))
             if self.path=='/api/clone':return self.reply(clone(d['id']))
             if self.path=='/api/save':return self.reply(save(d['profile']))
+            if self.path=='/api/safety':return self.reply(editor_safety.review(d['profile']))
+            if self.path=='/api/repair-preview':return self.reply(editor_safety.propose(d['profile'],d['issueId']))
+            if self.path=='/api/restore':return self.reply(restore(d['id'],d['revision'],d['expectedRevision']))
             if self.path=='/api/validate':
                 validate(d['profile']);compiled=compile_profile(d['profile'])
                 return self.reply({'ok':True,'config':compiled,'note':'형식·지원 범위 검사 통과. 빌드 실행과 경기력은 별도 경기 검증이 필요합니다.'})

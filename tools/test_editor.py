@@ -40,7 +40,7 @@ class EditorTests(unittest.TestCase):
         with self.assertRaises(ValueError):M.validate(p)
 
     def test_save_conflict_preserves_latest(self):
-        with tempfile.TemporaryDirectory() as tmp,patch.object(M,'PROFILES',Path(tmp)):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(M,'PROFILES',Path(tmp)/'profiles'),patch.object(M,'HISTORY',Path(tmp)/'history'):
             p=profile();M.save(p,create=True);stale=copy.deepcopy(p)
             p['name']='new';M.save(p)
             with self.assertRaises(ValueError):M.save(stale)
